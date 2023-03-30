@@ -1,80 +1,119 @@
+import traceback
 import pygame
 
-
-def transform(image, size=None):
-        image_width, image_height = image.get_size()
-        size = size or Application.screen.get_size()
-        screen_size = Application.screen.get_size()
-        scale = max(size[0] / image_width, size[1] / image_height)
-        new_size = (round(image_width * scale), round(image_height * scale))
-        scaled_image = pygame.transform.smoothscale(image, new_size)
-        bg_rect = scaled_image.get_rect(center=(screen_size[0] // 2, screen_size[1] // 2))
-        return scaled_image, bg_rect
+from menu import Menu, MenuItem
+from effects import FadeAlpha
+from backgrounds import ImageBackground, ShadowBackground
+from game import Game
+from mouse import MousePointer
 
 
 class Application:
+
     def __init__(self):
         self.time = 0
+
         pygame.init()
-        Application.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN | pygame.DOUBLEBUF)
+        self.set_mouse()
+        self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN | pygame.DOUBLEBUF)
         pygame.display.set_caption('Space cat')
-        Application.running = True
-        Application.clock = pygame.time.Clock()
-        font = pygame.font.Font('media/fonts/SpaceMission.otf', 150)
-        self.logo = font.render('Space Cat', True, 'white')
-        self.logo_x = Application.screen.get_size()[0] - self.logo.get_rect().width - 50
-        self.menu = {
-            'items': ['Start Game', 'Settings', 'Exit'],
-            'current': 0,
-            'font': pygame.font.Font('media/fonts/SpaceMission.otf', 72)
-        }
+        self.running = True
+        self.clock = pygame.time.Clock()
+        self.game = Game(self)
+        self.main_menu = Menu(
+            self,
+            logo=True,
+            background = ImageBackground('media/mainmenu.png'),
+            sound = 'media/space.mp3',
+            item_sound = 'media/menuitem.mp3',
+            select_sound = 'media/menu_select.mp3',
+            items = [
+                MenuItem('Start game', self.start_game),
+                MenuItem('Settings', ),
+                MenuItem('Exit', action=self.stop),
+            ],
+            active_effect = FadeAlpha(from_=255, to=0, duration=400)
+        )
+        self.ingame_menu = Menu(
+            self,
+            background = ShadowBackground(opacity=128),
+            caption = 'Paused',
+            item_sound = 'media/menuitem.mp3',
+            select_sound = 'media/menu_select.mp3',
+            items = [
+                MenuItem('Resume game', self.resume_game),
+                MenuItem('Settings'),
+                MenuItem('Exit to main menu', self.stop_game),
+                MenuItem('Exit to OS', self.stop),
+            ],
+            active_effect = FadeAlpha(from_=255, to=0, duration=400)
+        )
 
+    def run(self, skip_menu=False):
+        self.main_menu.run()
 
-    def run(self):
-        img = pygame.image.load('media/mainmenu.png')
-        img.convert()
-        self.img, self.rect = transform(img)
-        self.keys = {}
-        pygame.mixer.music.load('media/space.mp3')
-        pygame.mixer.music.play(-1)
+        if skip_menu:
+            self.start_game()
 
-        while Application.running:
-            time_delta = Application.clock.tick(60) / 1000.
+        while self.running or pygame.mixer.get_busy():
+            time_delta = self.clock.tick(60) / 1000.
             self.time += time_delta
             events = pygame.event.get()
             for event in events:
                 if event.type == pygame.QUIT:
-                    Application.running = False
-            keys = pygame.key.get_pressed()
-            if event.type == pygame.KEYDOWN:
-                # if keys[pygame.K_ESCAPE]:
-                #     Application.running = False
-                if keys[pygame.K_UP]:
-                    # self.menu['current'] = max(self.menu['current'] - 1, 0)
-                    self.menu['current'] = max(self.menu['current'] - 1, 0)
-                if keys[pygame.K_DOWN]:
-                    self.menu['current'] = min(self.menu['current'] + 1, len(self.menu['items']) - 1)
-                if keys[pygame.K_RETURN]:
-                    if self.menu['current'] == len(self.menu['items'])-1:
-                        Application.running = False
-
-
-            self.update()
+                    self.running = False
+                if event.type == pygame.KEYDOWN:
+                    self.dispatch_keys(event)
+                if event.type == pygame.MOUSEMOTION:
+                    self.mouse_pointer.update(event)
+            self.update(events)
             pygame.display.update()
         pygame.quit()
 
-    def update(self):
-        self.screen.blit(self.img, self.rect)
-        self.screen.blit(self.logo, (self.logo_x, 20))
-        # self.menu_items = [menu_font.render(text, True, 'white') for text in ('Start Game', 'Exit')]
-        for i, text in enumerate(self.menu['items']):
-            color = 'white'
-            if i == self.menu['current']:
-                color = 'red'
-            menu_item = self.menu['font'].render(text, True, color)
-            self.screen.blit(
-                menu_item, 
-                (
-                    50, 
-                    Application.screen.get_size()[1] - menu_item.get_rect().height - (80 * (3-i))
-                ))
+    def update(self, events):
+        try:
+            self.game.update(events)
+            self.main_menu.update(events)
+            self.ingame_menu.update(events)
+            self.mouse_pointer_group.update()
+            self.mouse_pointer_group.draw(self.screen)
+        except KeyboardInterrupt:
+            raise
+        except Exception as e:
+            traceback.print_exc()
+
+    def start_game(self):
+        self.main_menu.stop()
+        self.ingame_menu.run()
+        self.ingame_menu.stop()
+        self.game.run()
+
+    def stop_game(self):
+        self.ingame_menu.stop()
+        self.main_menu.run()
+        self.game.stop()
+
+    def resume_game(self):
+        self.ingame_menu.stop()
+        self.game.toggle_pause()
+
+    def dispatch_keys(self, event):
+        if event.key == pygame.K_ESCAPE:
+            self.game.toggle_pause()
+            self.ingame_menu.toggle_pause()
+
+    def stop(self):
+        pygame.mixer.fadeout(300)
+        self.game.stop()
+        self.running = False
+
+    def set_mouse(self):
+        mouse_surf = pygame.image.load('media/cursor.cur')
+        mouse_surf = pygame.transform.smoothscale_by(mouse_surf, 2)
+        pygame.mouse.set_visible(False)
+        self.mouse_pointer_group = pygame.sprite.Group()
+        self.mouse_pointer = MousePointer()
+        self.mouse_pointer.image = mouse_surf
+        self.mouse_pointer.rect = mouse_surf.get_rect()
+        self.mouse_pointer_group.add(self.mouse_pointer)
+

@@ -1,0 +1,14 @@
+*.iml
+.idea
+.venv
+.env
+*.sqlite3
+
+__pycache__
+*.pyc
+.coverage
+coverage.xml
+tests-report.xml
+
+static/
+*.sublime-*

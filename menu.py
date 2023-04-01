@@ -54,6 +54,7 @@ class Menu:
 
         if self.sound is not None:
             self.sound = pygame.mixer.Sound(self.sound)
+            self.sound.set_volume(0.5)
             self.sound.play(-1)
         self.visible = True
 

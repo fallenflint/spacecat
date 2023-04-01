@@ -10,3 +10,10 @@ def transform(image, size=None):
     scaled_image = pygame.transform.smoothscale(image, new_size)
     bg_rect = scaled_image.get_rect(center=(screen_size[0] // 2, screen_size[1] // 2))
     return scaled_image, bg_rect
+
+
+def log(func):
+    def _wrapped(self, *args, **kwargs):
+        print(f'{self.__class__.__name__}.{func.__name__}')
+        return func(self, *args, **kwargs)
+    return _wrapped

@@ -11,4 +11,5 @@ coverage.xml
 tests-report.xml
 
 static/
+media/
 *.sublime-*
